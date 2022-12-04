@@ -1,7 +1,9 @@
 #include "simlib.h"
 
 #include <stdio.h>
+
 #include <iostream>
+
 #include <algorithm>
 
 using namespace std;
@@ -15,11 +17,10 @@ using namespace std;
 #define A_WORKER_STORING_SERVICE_COUNT 2
 #define B_WORKER_CONTROL_SERVICE_COUNT 2
 
-Histogram truckSystemTime("Celkova doba v systemu", 0, 5, 7);
-
 Queue rampQueue("Cekani na rampu");
 Queue serviceQueue("Cekani na obsluhu");
-Queue controlQueue("Kontrola zbozi");
+
+Histogram truckSystemTime("Celkova doba v systemu", 0, 5, 7);
 
 int je_plno = 0;
 int aWorkers_full = 0;
@@ -38,19 +39,12 @@ double totalServiceTime = 0;
 void showHelpMessage(string name) {
     cerr << "Usage: " << name << " <option(s)>\n" <<
         "Options:\n" <<
-        "\t-r COUNT\t\t Number of open ramps in the warehouse.\n" <<
-        "\t-a COUNT\t\t Number of professional/qualified workers.\n" <<
-        "\t-b COUNT\t\t Number of ordinary/unqualified workers.\n\n" <<
-        "-h,--help\t\tShow this help message." <<
+        "\t-r / --ramps COUNT\t\t Number of open ramps in the warehouse.\n" <<
+        "\t-a / --awork COUNT\t\t Number of professional/qualified workers.\n" <<
+        "\t-b / --bwork COUNT\t\t Number of ordinary/unqualified workers.\n\n" <<
+        "\t-f / --file FILENAME\t\t Save output to the file FILENAME.\n" <<
+        "\t-h / --help\tShow this help message." <<
         endl;
-}
-
-char * getOptionString(char * start[], char * end[],
-    const string & optionString) {
-    char ** itr = find(start, end, optionString);
-    if (itr != end && ++itr != end)
-        return * itr;
-    return 0;
 }
 
 bool findOptionString(char * start[], char * end[],
@@ -58,83 +52,108 @@ bool findOptionString(char * start[], char * end[],
     return find(start, end, optionString) != end;
 }
 
-class ControlService: public Process {
-    public: ControlService(
-        Store *bWorkers
+char * getOptionValue(char * start[], char * end[],
+    const string & optionString, const string & optionStringLong) {
+    /* Find option string and return option value */
+    /* https://stackoverflow.com/questions/865668/parsing-command-line-arguments-in-c */
+    char ** itr = find(start, end, optionString);
+    if (itr != end && ++itr != end)
+        return * itr;
+    
+    char ** itrLong = find(start, end, optionStringLong);
+    if (itrLong != end && ++itrLong != end)
+        return * itrLong;
+    return 0;
+}
 
-    ): Process() {
-        b=bWorkers;
+class ControlService: public Process {
+    public: ControlService(Store * bWorkers): Process() {
+        b = bWorkers;
     }
     void Behavior() {
+        /* 
+            Checking of received goods after unloading the truck.
+            Checking is done by ordinary workers.
+        */
+
         //if(bWorkers.Free() < 2) printf("[%d]: B kontrola: Nedostupni: %d\n", kontrola, bWorkers.Used());
         kontrola++;
-        Enter(*b, B_WORKER_CONTROL_SERVICE_COUNT);
+        Enter( * b, B_WORKER_CONTROL_SERVICE_COUNT);
         //printf("[%d]: Pouziti B: %d\n", kontrola, bWorkers.Used());
         Wait(Uniform(10, 15));
 
-        Leave(*b, B_WORKER_CONTROL_SERVICE_COUNT);
+        Leave( * b, B_WORKER_CONTROL_SERVICE_COUNT);
     }
-    Store *b;
+    Store * b;
 };
 
 class StoringService: public Process {
     public: StoringService(
-        Store *aWorkers
+        Store * aWorkers
     ): Process() {
-        a=aWorkers;
+        a = aWorkers;
     }
     void Behavior() {
+        /*
+            Storage of recieved goods after unload.
+            Done by professional workers.
+        */
         storing++;
-        Enter(*a, A_WORKER_STORING_SERVICE_COUNT);
-        
+        Enter( * a, A_WORKER_STORING_SERVICE_COUNT);
+
         Wait(Uniform(15, 20));
-        Leave(*a, A_WORKER_STORING_SERVICE_COUNT);
+        Leave( * a, A_WORKER_STORING_SERVICE_COUNT);
     }
-    Store *a;
+    Store * a;
 };
 
 class Truck: public Process {
     public: Truck(
         unsigned int type,
-        Store *ramps,
-        Store *aWorkers,
-        Store *bWorkers
+        Store * ramps,
+        Store * aWorkers,
+        Store * bWorkers
     ): Process() {
         serviceType = type;
-        r=ramps;
-        a=aWorkers;
-        b=bWorkers;
+        r = ramps;
+        a = aWorkers;
+        b = bWorkers;
     }
 
     void Service() {
+        /* 
+            Takes 1 professional and 2 ordinary storemen.
+            Simulate truck unloading or loading.
+        */
         obsluha++;
-
-        //printf("[%d] Obsluha->.. %d, %d\n", celkem, aWorkers.Free(), bWorkers.Free());
-
-        Enter(*a, A_WORKER_SERVICE_COUNT);
-        Enter(*b, B_WORKER_SERVICE_COUNT);
+        Enter( * a, A_WORKER_SERVICE_COUNT);
+        Enter( * b, B_WORKER_SERVICE_COUNT);
 
         double serviceTime = Time;
 
-        Wait(Uniform(15, 30)); // Obsluha
+        Wait(Uniform(15, 30)); // Unloading/Loading
 
-        Leave(*a, A_WORKER_SERVICE_COUNT);
-        Leave(*b, B_WORKER_SERVICE_COUNT);
+        Leave( * a, A_WORKER_SERVICE_COUNT);
+        Leave( * b, B_WORKER_SERVICE_COUNT);
 
         totalServiceTime += Time - serviceTime;
     }
 
     void Action(double enterTime) {
-        Enter(*r, 1);
+        /*
+            Finds free storemen for unloading/loading.
+            After the service is done, free the ramp.
+        */
+        Enter( * r, 1);
 
-        if (a->Full()) aWorkers_full++;
-        if (b->Full()) bWorkers_full++;
-        if (!(a->Free() >= A_WORKER_SERVICE_COUNT && b->Free() >= B_WORKER_SERVICE_COUNT)) {
+        if (a -> Full()) aWorkers_full++;
+        if (b -> Full()) bWorkers_full++;
+        if (!(a -> Free() >= A_WORKER_SERVICE_COUNT && b -> Free() >= B_WORKER_SERVICE_COUNT)) {
             //printf("[%d] !!! Free: %d, %d\n", celkem, a->Free(), b->Free());
             // Stats
             workers_unavailable++;
         }
-        while (!(a->Free() >= A_WORKER_SERVICE_COUNT && b->Free() >= B_WORKER_SERVICE_COUNT)) {
+        while (!(a -> Free() >= A_WORKER_SERVICE_COUNT && b -> Free() >= B_WORKER_SERVICE_COUNT)) {
             serviceQueue.Insert(this);
             Passivate();
 
@@ -148,65 +167,68 @@ class Truck: public Process {
             (serviceQueue.GetFirst()) -> Activate();
         }
         truckSystemTime(Time - enterTime);
-        Leave(*r, 1);
-        //printf("[%d] Uvolnuje rampu...\n", celkem);
+        Leave( * r, 1);
 
         if (serviceType == TRUCK_UNLOADING) {
             unloading_count++;
-            (new ControlService(b)) -> Activate();
-            (new StoringService(a)) -> Activate();
+            (new ControlService(b)) -> Activate(); //Activate goods control process
+            (new StoringService(a)) -> Activate(); //Activate storing process
         } else if (serviceType == TRUCK_LOADING) loading_count++;
 
         if (rampQueue.Length() > 0) {
-            //printf("[%d] Aktivuje pro rampu...\n", celkem);
             (rampQueue.GetFirst()) -> Activate();
         }
     }
     void Behavior() {
-        printf("[%d]: %d\n", celkem, r->Used());
-
+        /*
+            Truck finds the free ramp and waits for storemen to load/unload.   
+        */
         celkem++;
         double enterTime = Time;
-        if (r->Full()) {
+        if (r -> Full()) {
             je_plno++;
         }
 
-        while (r->Full()) {
+        while (r -> Full()) {
             rampQueue.Insert(this);
             Passivate();
             break;
         }
-        //printf("[%d] Na rampe...\n", celkem, (float) Time);
         Action(enterTime);
     }
     unsigned int serviceType;
-    Store *r;
-    Store *a;
-    Store *b;
+    Store * r;
+    Store * a;
+    Store * b;
 };
 
 class TruckGenerator: public Event {
     public: TruckGenerator(
-        Store *ramps,
-        Store *aWorkers,
-        Store *bWorkers
+        Store * ramps,
+        Store * aWorkers,
+        Store * bWorkers
     ): Event() {
-        r=ramps;
-        a=aWorkers;
-        b=bWorkers;
+        r = ramps;
+        a = aWorkers;
+        b = bWorkers;
     }
     void Behavior() {
-        if (Random() <= 0.5) {
+        /* 
+            Periodically generate new Truck process.
+            50% - truck loading
+            50% - truck unloading
+        */
+        if (Random() <= 0.5)
             (new Truck(TRUCK_LOADING, r, a, b)) -> Activate();
-        } else {
+        else
             (new Truck(TRUCK_UNLOADING, r, a, b)) -> Activate();
-        }
+
         double next = Time + Exponential(TRUCK_ACTIVATE_TIME_MEAN);
         Activate(next);
     }
-    Store *r;
-    Store *a;
-    Store *b;
+    Store * r;
+    Store * a;
+    Store * b;
 };
 
 int main(int argc, char * argv[]) {
@@ -214,11 +236,15 @@ int main(int argc, char * argv[]) {
         showHelpMessage(argv[0]);
         exit(0);
     }
-    char * rampCount = getOptionString(argv, argv + argc, "-r");
-    char * aWorkerCount = getOptionString(argv, argv + argc, "-a");
-    char * bWorkerCount = getOptionString(argv, argv + argc, "-b");
+    char *outputFile = getOptionValue(argv, argv + argc, "-f", "--file");
+    if(outputFile)
+        SetOutput(outputFile);
 
-    if(!rampCount || !aWorkerCount || !bWorkerCount ) {
+    char * rampCount = getOptionValue(argv, argv + argc, "-r", "--ramps");
+    char * aWorkerCount = getOptionValue(argv, argv + argc, "-a", "--awork");
+    char * bWorkerCount = getOptionValue(argv, argv + argc, "-b", "--bwork");
+
+    if (!rampCount || !aWorkerCount || !bWorkerCount) {
         showHelpMessage(argv[0]);
         exit(0);
     }
@@ -226,11 +252,12 @@ int main(int argc, char * argv[]) {
     Store ramps("Ramps", stoi(rampCount));
     Store aWorkers("PROFESSIONAL WORKERS", stoi(aWorkerCount));
     Store bWorkers("ORDINARY WORKERS", stoi(bWorkerCount));
-    
+
     Init(0, 10000);
     (new TruckGenerator(ramps, aWorkers, bWorkers)) -> Activate();
 
     Run();
+
     ramps.Output();
     aWorkers.Output();
     bWorkers.Output();
