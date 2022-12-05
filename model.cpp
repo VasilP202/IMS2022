@@ -1,9 +1,12 @@
+/*  FIT VUT - Modelování a simulace
+**  SHO v logistice
+**
+**  Author: Vasil Poposki
+**  Date: 05. 12. 2022
+*/
+
 #include "simlib.h"
-
-#include <stdio.h>
-
 #include <iostream>
-
 #include <algorithm>
 
 using namespace std;
@@ -77,16 +80,20 @@ void printOutputStats() {
         "Number of trucks: %d; Unloadings: %d. Loadings: %d.\n-\tLoading/unloading was performed %d time(s).\n",
         truckCount, unloadingCount, loadingCount, truckService
     );
-    Print("-\tTruck could not find free ramp %d time(s) (%f%).\n\n",
+    Print(
+        "-\tTruck could not find free ramp %d time(s) (%f%).\n\n",
         rampsFullCount, (float) rampsFullCount / truckCount * 100
     );
     Print("Workers A full capacity: %f%\n", (float) aWorkersFullCount / truckCount * 100);
     Print("Workers B full capacity: %f%\n", (float) bWorkersFullCount / truckCount * 100);
-    Print("Storemen were not available for loading/unloading %d time(s) (%f%).\n",
+    Print(
+        "Storemen were not available for loading/unloading %d time(s) (%f%).\n",
         workersUnavailable, (float) workersUnavailable / truckCount * 100
     );
-    Print("\nAverage time spent per storeman:\n-\tWorker A (loading/unloading + storage):"
-        "%f%\n-\tWorker B (loading/unloading + palettes control): %f%\n",
+    Print(
+        "\nAverage time spent per storeman:\n"
+        "-\tWorker A (loading/unloading + storage): %f%\n"
+        "-\tWorker B (loading/unloading + palettes control): %f%\n",
         (float) totalAWorkersTime / (float) SIMULATION_END_TIME * 100,
         ((float) totalBWorkersTime / (float) SIMULATION_END_TIME * 100)
     );
